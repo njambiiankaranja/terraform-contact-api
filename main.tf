@@ -8,6 +8,12 @@ resource "aws_dynamodb_table" "submissions" {
     name = "id"
     type = "S"
   }
+
+  # DynamoDB deletes items automatically once their expires_at time has passed
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
 }
 
 # 2. SNS topic and email subscription (you must confirm the email once)
@@ -85,8 +91,9 @@ resource "aws_lambda_function" "submit" {
 
   environment {
     variables = {
-      TABLE_NAME = aws_dynamodb_table.submissions.name
-      TOPIC_ARN  = aws_sns_topic.notifications.arn
+      TABLE_NAME     = aws_dynamodb_table.submissions.name
+      TOPIC_ARN      = aws_sns_topic.notifications.arn
+      RETENTION_DAYS = tostring(var.retention_days)
     }
   }
 
@@ -138,6 +145,7 @@ resource "aws_lambda_permission" "apigw" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.api.execution_arn}/*/*"
 }
+
 # 6. Alert by email if the function throws errors
 resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
   alarm_name          = "${var.project_name}-lambda-errors"
