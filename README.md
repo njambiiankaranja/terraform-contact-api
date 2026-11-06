@@ -1,5 +1,7 @@
 # Serverless Contact Form API with Terraform
 
+![Terraform CI](https://github.com/njambiiankaranja/terraform-contact-api/actions/workflows/terraform-ci.yml/badge.svg)
+
 A complete backend for a website contact or RSVP form, built on AWS and defined entirely as code with Terraform. A visitor submits the form, the data is validated and saved to a database, and you receive an email straight away. There are no servers to run, patch or pay for while nobody is using it.
 
 ---
@@ -32,6 +34,7 @@ This project is a third option: a small serverless API that does exactly one job
 - **You own your data.** Submissions are stored in your own DynamoDB table, not a third party's dashboard.
 - **Secure by design.** The function has the narrowest permissions it needs, input is validated before it is stored, and requests are rate limited.
 - **Reproducible.** The entire stack is Terraform code. It can be created with one command, rebuilt identically, and removed completely with another, which also makes it safe to experiment with.
+- **Data expires automatically.** Each submission is deleted after a retention period (90 days by default), so personal data is not kept longer than needed.
 - **Observable.** Logs are kept for 14 days and an alarm tells you when something breaks, so problems do not go unnoticed.
 - **Reusable.** The same API can serve a contact form, an RSVP form, a newsletter sign-up or a feedback form on any number of sites.
 
@@ -61,7 +64,7 @@ This project is a third option: a small serverless API that does exactly one job
 |---|---|
 | API Gateway HTTP API | Public `POST /submit` endpoint with CORS and request throttling (5 requests per second, bursts of 10) |
 | Lambda function | Validates the request, writes to DynamoDB and publishes to SNS. Python 3.11, 10 second timeout |
-| DynamoDB table | Stores each submission (`id`, `name`, `email`, `message`, `received_at`). On-demand billing |
+| DynamoDB table | Stores each submission (`id`, `name`, `email`, `message`, `received_at`, `expires_at`). On-demand billing, with automatic expiry (TTL) |
 | SNS topic and email subscription | Sends you an email for every submission |
 | CloudWatch alarm | Emails you through the same topic if the function reports an error |
 | CloudWatch log group | Lambda logs, kept for 14 days |
@@ -103,7 +106,7 @@ Practical notes about how it behaves, so there are no surprises:
 - **Emails are plain text.** SNS keeps things simple. Formatted messages or an automatic reply to the visitor would need Amazon SES.
 - **The first request after a quiet period is slightly slower.** Lambda needs a moment to start the function (a cold start). Later requests are fast.
 - **A rare failure can create a duplicate.** The function saves the record first and then sends the notification. If the notification step fails, the visitor sees an error and may resubmit, so the same message can appear twice. The alarm will tell you when this happens.
-- **Submissions contain personal data.** Names and email addresses are stored indefinitely, because no expiry is set. Handle them responsibly, and delete records you no longer need.
+- **Submissions contain personal data.** Names and email addresses are kept for `retention_days` (90 by default) and then deleted automatically by DynamoDB. Deletion is not instant: expired items are usually removed within a day or two. Copy anything you need to keep elsewhere before it expires.
 - **Validation errors do not trigger the alarm.** A visitor sending bad input gets a `400` response. The alarm is for real failures such as a database error.
 - **Costs are tiny but not zero.** Everything is billed per use. Destroy the stack when you do not need it, and check current AWS pricing before leaving anything running long term.
 
@@ -164,6 +167,7 @@ terraform-contact-api/
 ├── variables.tf    # Region, project name, notification email, allowed origins
 ├── outputs.tf      # API URL and table name
 ├── providers.tf    # Provider versions and S3 remote backend
+├── .github/workflows/terraform-ci.yml   # Runs fmt and validate on every pull request
 ├── handler.py      # Lambda function code
 └── README.md
 ```
@@ -176,6 +180,7 @@ terraform-contact-api/
 | `allowed_origins` | `["*"]` | Websites allowed to call the API from a browser |
 | `aws_region` | `us-east-1` | Region to deploy into |
 | `project_name` | `contact-api` | Prefix for resource names and the `Project` tag |
+| `retention_days` | `90` | Days to keep each submission before it is deleted automatically |
 
 ---
 
@@ -209,7 +214,7 @@ curl -X POST "$(terraform output -raw api_url)" \
 aws dynamodb scan --table-name $(terraform output -raw table_name)
 ```
 
-You should get a success message, an email, and a record in the table. Sending an empty `message` should return `{"error": "message is required"}`.
+You should get a success message, an email, and a record in the table with an `expires_at` timestamp. Sending an empty `message` should return `{"error": "message is required"}`.
 
 ### Tear down
 
@@ -225,5 +230,5 @@ terraform destroy
 - Send formatted emails and an automatic reply to the visitor with Amazon SES
 - Add a CAPTCHA or AWS WAF for high-traffic public sites
 - Put the API on a custom domain with an ACM certificate
-- Add an expiry (TTL) on stored submissions so old personal data is removed automatically
-- Add a CloudWatch dashboard and a GitHub Actions pipeline that runs `terraform fmt`, `validate` and `plan`
+- Extend the CI pipeline to run `terraform plan` using GitHub Actions OIDC, with no stored AWS keys
+- Add a CloudWatch dashboard for requests, errors and latency
