@@ -25,3 +25,13 @@ variable "allowed_origins" {
   default     = ["*"]
   description = "Websites allowed to call the API from a browser. Restrict this to your site's URL once it is live."
 }
+variable "retention_days" {
+  type        = number
+  default     = 90
+  description = "Days to keep submissions before DynamoDB deletes them automatically"
+
+  validation {
+    condition     = var.retention_days >= 1
+    error_message = "retention_days must be at least 1."
+  }
+}

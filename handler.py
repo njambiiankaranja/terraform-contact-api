@@ -10,6 +10,7 @@ dynamodb = boto3.resource("dynamodb")
 sns = boto3.client("sns")
 table = dynamodb.Table(os.environ["TABLE_NAME"])
 TOPIC_ARN = os.environ["TOPIC_ARN"]
+RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "90"))
 
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 LIMITS = {"name": 100, "email": 200, "message": 2000}
@@ -48,7 +49,14 @@ def handler(event, context):
     if not EMAIL_PATTERN.match(fields["email"]):
         return response(400, {"error": "email is not valid"})
 
-    item = {"id": str(uuid.uuid4()), "received_at": int(time.time()), **fields}
+    now = int(time.time())
+    item = {
+        "id": str(uuid.uuid4()),
+        "received_at": now,
+        # DynamoDB TTL deletes the item after this time (epoch seconds)
+        "expires_at": now + RETENTION_DAYS * 86400,
+        **fields,
+    }
     table.put_item(Item=item)
 
     sns.publish(
