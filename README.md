@@ -1,7 +1,4 @@
 # Serverless Contact Form API with Terraform
-
-![Terraform CI](https://github.com/njambiiankaranja/terraform-contact-api/actions/workflows/terraform-ci.yml/badge.svg)
-
 A complete backend for a website contact or RSVP form, built on AWS and defined entirely as code with Terraform. A visitor submits the form, the data is validated and saved to a database, and you receive an email straight away. There are no servers to run, patch or pay for while nobody is using it.
 
 ---
